@@ -1,13 +1,8 @@
-# -*-coding:utf8-*-
-import pymysql.cursors
-from settings import MYSQL_URL, MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+import requests
 
+url = 'www.ncist.edu.cn'
+proxies1 = {"http": "http://127.0.0.1:8181", "https": "http://127.0.0.1:8181"}
 
-def main():
-    num = '高校所在地：'.split('：')[1]
-    print(num)
-    pass
-
-
-if __name__ == "__main__":
-    main()
+rsp0 = requests.get(url)
+print(rsp0)
+print(rsp0.status_code)

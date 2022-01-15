@@ -2,9 +2,12 @@
 #
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
+import random
 
 from scrapy import signals
-
+from loguru import logger
+from settings import PROXIES
+import base64
 # useful for handling different item types with a single interface
 from itemadapter import is_item, ItemAdapter
 
@@ -101,3 +104,23 @@ class TutorialDownloaderMiddleware:
 
     def spider_opened(self, spider):
         spider.logger.info('Spider opened: %s' % spider.name)
+
+
+class ProxyMiddleware:
+    def process_request(self, request, spider):
+        proxy = random.choice(PROXIES)
+        if 'college.gaokao.com' in request.url:
+            return
+
+        if proxy['user_pass'] is not None:
+            request.meta['proxy'] = "http://{}".format(proxy['ip_port'])
+            request.meta['proxy'] = "https://{}".format(proxy['ip_port'])
+            encoded_user_pass = base64.encodestring(proxy['user_pass'])
+            request.headers['Proxy-Authorization'] = 'Basic ' + encoded_user_pass
+            logger.info('request.meta={}'.format(request.meta))
+        else:
+            request.meta['proxy'] = "http://%s" % proxy['ip_port']
+
+        logger.info('ProxyMiddleware process_request: request={}, spider={},request.meta={}'.format(request, spider,
+                                                                                                    request.meta[
+                                                                                                        'proxy']))

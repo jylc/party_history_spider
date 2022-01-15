@@ -5,10 +5,16 @@ import sys
 from scrapy.spiders import CrawlSpider
 from scrapy.selector import Selector
 from scrapy.http import Request
+import requests
 import re
-from tutorial.items import SchoolsItem
+from tutorial.items import SchoolsItem, PartyInfoItem
 from loguru import logger
 from tutorial.items import NameAndCode
+
+
+def parse_error(response):
+    logger.error('craw {} failed'.format(response))
+    pass
 
 
 class SchoolsSpider(CrawlSpider):
@@ -27,7 +33,8 @@ class SchoolsSpider(CrawlSpider):
         self.xsrf = ''
 
     def start_requests(self):
-        return [Request(self.base_url, callback=self.prepare_school_url, errback=self.parse_error)]
+        # return [Request(self.base_url, callback=self.prepare_school_url, errback=parse_error)]
+        return [Request(self.base_url, callback=self.prepare_school_url, errback=parse_error)]
 
     def prepare_school_url(self, response):
         """
@@ -38,7 +45,7 @@ class SchoolsSpider(CrawlSpider):
         selector = Selector(response)
         # 第一个p包含地区信息，提取
         test1 = selector.xpath('//div[@class="menufix"]/p[contains(.,"高校所在地：")]').extract_first()
-        logger.info('test1')
+        logger.info('test1={}'.format(test1))
         regions_info_urls = selector.xpath('//div[@class="menufix"]/p[contains(.,"高校所在地：")]//a/@href').extract()
         logger.info('regions_info_urls')
         regions_info_names = selector.xpath('//div[@class="menufix"]/p[contains(.,"高校所在地：")]//a/text()').extract()
@@ -109,9 +116,9 @@ class SchoolsSpider(CrawlSpider):
 
         for regionCode in regionCodes:
             request_url = '{}/{}/{}'.format(self.base_url, regionCode, 's1')
-            yield Request(request_url, self.parse_school_info, errback=self.parse_error)
+            yield Request(request_url, self.parse_school_info_page_nums, errback=parse_error)
 
-    def parse_school_info(self, response):
+    def parse_school_info_page_nums(self, response):
         selector = Selector(response)
         # 分析页码数
         total_pages_xpath = selector.xpath('//ul[@class="fany"]/li[@id="qx"]').extract_first()
@@ -121,7 +128,7 @@ class SchoolsSpider(CrawlSpider):
         logger.info(current_base_url)
         for page in range(1, int(total_pages) + 1):
             yield Request('{}/{}'.format(current_base_url, 'p' + str(page)), self.get_school_info,
-                          errback=self.parse_error)
+                          errback=parse_error)
 
     def get_school_info(self, response):
         selector = Selector(response)
@@ -140,7 +147,13 @@ class SchoolsSpider(CrawlSpider):
                 school_subjection = str(li_texts[3]).split('：')[1]
                 school_education_level = str(li_texts[4]).split('：')[1]
                 school_url = str(li_texts[5]).split('：')[1]
-                yield SchoolsItem(
+
+                if 'http://' in str(school_url):
+                    school_url = str(school_url).split('http://')[1]
+                if 'www.' in str(school_url):
+                    school_url = str(school_url).split('www.')[1]
+
+                school_item = SchoolsItem(
                     name=school_name,
                     url=school_url,
                     education_level=school_education_level,
@@ -149,10 +162,71 @@ class SchoolsSpider(CrawlSpider):
                     school_type=school_type,
                     subjection=school_subjection,
                 )
+                yield school_item
+
+                # 根据高校网址，通过谷歌去搜寻包含关键字的网页
+                if school_url != '——':
+                    logger.info('school url:{}'.format(school_url))
+                    try:
+                        status = requests.get(url='http://www.{}/'.format(school_url), timeout=5).status_code
+                        if status != 200:
+                            school_url = '——'
+                    except Exception as err:
+                        logger.error('school url has error:{}!'.format(err))
+                        school_url = '——'
+
+                    if school_url != '——':
+                        logger.info('https://google.com/search?q=site:{} {}'.format(school_url, '党'))
+                        # FIXME scrapy只能获取静态网页中的标签，google的网页是动态的，需修改
+                        yield Request('https://google.com/search?q=site:{} {}'.format(school_url, '党'),
+                                      meta={'school_url': school_url, 'proxy': 'http://127.0.0.1:8181'},
+                                      callback=self.parse_google_page_nums,
+                                      errback=parse_error)
+                        # 传递入数据库，保存起来
+
+
             except Exception:
-                logger.error("error")
+                logger.error('error')
                 exit(-1)
 
-    def parse_error(self, response):
-        logger.error('craw {} failed', response.url)
-        pass
+    # 从谷歌中查询并分析
+    def parse_google_page_nums(self, response):
+        logger.info('start parse goolge page nums')
+        logger.info('google page num url={}'.format(response.url))
+        selector = Selector(response)
+        next_page_url = selector.xpath('//a[@id="pnnext"]/@href').extract_first()
+        # 迭代翻页
+        if next_page_url is not None:
+            Request('https://google.com{}'.format(next_page_url),
+                    meta=response.meta['school_url'],
+                    callback=self.get_google_page_infos,
+                    errback=parse_error)
+
+    def get_google_page_infos(self, response):
+        # 当前页搜寻
+        selector = Selector(response)
+        query_results_entities = selector.xpath('//div[@class="tF2Cxc"]')
+        school_url = response.meta['school_url']
+        for entity in query_results_entities:
+            related_url = entity.xpath('./div[@class="yuRUbf"]/a/@href').extract_first()
+            related_title = selector.xpath('./div[@class="yuRUbf"]/a/h3/text()').extract_first()
+            content = selector.xpath(
+                './div[@class="VwiC3b yXK7lf MUxGbd yDYNvb lyLwlc lEBKkf"]')
+            # TODO 发布时间(release time)提取
+            brief_introduction = None
+            release_time = None
+            if len(content) == 1:
+                brief_introduction = content.xpath('./span/text()').extract_first()
+            elif len(content) == 2:
+                brief_introduction = content[0].xpath('./span/text()').extract_first()
+                release_time = content[1].xpath('./span/text()').extract_first()
+
+            # party的相关信息
+            party_info_entity = PartyInfoItem(
+                school_url=school_url,
+                related_url=related_url,
+                related_title=related_title,
+                brief_introduction=brief_introduction,
+                release_time=release_time,
+            )
+            yield party_info_entity

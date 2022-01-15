@@ -7,7 +7,22 @@
 # useful for handling different item types with a single interface
 from settings import MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
 import pymysql.cursors
+from items import SchoolsItem, PartyInfoItem
 from loguru import logger
+
+
+def query_item(school_name, cursor):
+    sql = "SELECT FROM `school_entities` where `school_name=%s`"
+    try:
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        if len(results) != 0:
+            return True
+        else:
+            return False
+    except:
+        logger.error('cannot select {}', school_name)
+        return False
 
 
 class SchoolsPipeline:
@@ -15,10 +30,9 @@ class SchoolsPipeline:
     存储数据
     """
 
-    def __init__(self, mysql_url, host, user, password, database):
+    def __init__(self, host, user, password, database):
         logger.info("pipeline start")
         self.connection = None
-        self.mysql_url = mysql_url
 
         self.host = host
         self.user = user
@@ -58,6 +72,8 @@ class SchoolsPipeline:
         self._is_connected()
         with self.connection:
             with self.connection.cursor() as cursor:
+                if query_item(item['name'], cursor):
+                    return
                 sql = "INSERT INTO `school_entities`(`school_name`," \
                       "`school_url`," \
                       "`school_education_level`," \
@@ -75,6 +91,27 @@ class SchoolsPipeline:
                     item['subjection']))
             self.connection.commit()
 
+    def _process_party_infos(self, item):
+        logger.info("process party information")
+        self._is_connected()
+        with self.connection:
+            with self.connection.cursor() as cursor:
+                if query_item(item['school_url'], cursor):
+                    return
+                sql = "INSERT INTO `party_info_entities`(`school_url`," \
+                      "`related_url`," \
+                      "`related_title`," \
+                      "`brief_introduction`," \
+                      "`release_time`) VALUES (%s,%s,%s,%s,%s,%s)"
+                cursor.execute(sql, (
+                    item['school_url'],
+                    item['related_url'],
+                    item['related_title'],
+                    item['brief_introduction'],
+                    item['release_time'],
+                ))
+            self.connection.commit()
+
     def open_spider(self, spider):
         logger.info("open spider")
         self.connection = pymysql.connect(host=self.host,
@@ -89,5 +126,9 @@ class SchoolsPipeline:
 
     def process_item(self, item, spider):
         logger.info("process item")
-        self._process_schools(item)
+        if type(item) == SchoolsItem:
+            self._process_schools(item)
+        if type(item) == PartyInfoItem:
+            self._process_schools(item)
+
         return item

@@ -30,9 +30,20 @@ class SchoolsItem(scrapy.Item):
     url = Field()
     education_level = Field()
     region = Field()
-    school_character=Field()
+    school_character = Field()
     school_type = Field()
     subjection = Field()
+
+
+class PartyInfoItem(scrapy.Item):
+    """
+    相关的信息
+    """
+    school_url = Field()
+    related_url = Field()
+    related_title = Field()
+    brief_introduction = Field()
+    release_time = Field()
 
 
 class NameAndCode:

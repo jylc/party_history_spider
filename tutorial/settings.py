@@ -50,7 +50,7 @@ ROBOTSTXT_OBEY = False
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 # DOWNLOADER_MIDDLEWARES = {
-#    'tutorial.middlewares.TutorialDownloaderMiddleware': 543,
+#     'tutorial.middlewares.ProxyMiddleware': 1,
 # }
 
 # Enable or disable extensions
@@ -63,7 +63,7 @@ ROBOTSTXT_OBEY = False
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     # 'tutorial.pipelines.TutorialPipeline': 300,
-    'tutorial.pipelines.SchoolsPipeline': 300
+    'tutorial.pipelines.SchoolsPipeline': 300,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
@@ -86,7 +86,11 @@ ITEM_PIPELINES = {
 # HTTPCACHE_DIR = 'httpcache'
 # HTTPCACHE_IGNORE_HTTP_CODES = []
 # HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
-MYSQL_HOST = 'localhost'
+MYSQL_HOST = '10.16.77.184'
 MYSQL_USER = 'root'
-MYSQL_PASSWORD = 'root'
+MYSQL_PASSWORD = 'Password123@mysql'
 MYSQL_DATABASE = 'partyhistoryspider'
+
+PROXIES = [
+    {'ip_port': '127.0.0.1:8181', 'user_pass': None},
+]
