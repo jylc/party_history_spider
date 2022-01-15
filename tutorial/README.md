@@ -16,7 +16,7 @@
 
 * 使用[ssr-command-client](https://github.com/TyrantLucifer/ssr-command-client)
 * scrapy不支持socks5，因此安装python-proxy将socks5代理转为http代理，具体戳[这里](https://stackoverflow.com/questions/59085184/how-can-proxy-scrapy-requests-with-socks5)
-* 将代理设置在中间件中。
+
 
 #### 5. 运行main.py
 
