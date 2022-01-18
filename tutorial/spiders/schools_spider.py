@@ -7,9 +7,13 @@ from scrapy.selector import Selector
 from scrapy.http import Request
 import requests
 import re
+
+from scrapy_splash import SplashRequest
+
 from tutorial.items import SchoolsItem, PartyInfoItem
 from loguru import logger
 from tutorial.items import NameAndCode
+from settings import PROXIES
 
 
 def parse_error(response):
@@ -83,7 +87,6 @@ class SchoolsSpider(CrawlSpider):
                 name = school_type_names[i]
                 if 'class' in str(url):
                     continue
-                # <a href="http://college.gaokao.com/schlist/c1/">综合</a>
                 code = str(url).rsplit('schlist/')[1].split('/')[0]
                 typeNameAndCodeArr.append(NameAndCode(name=name, code=code))
 
@@ -104,7 +107,6 @@ class SchoolsSpider(CrawlSpider):
                 name = education_level_names[i]
                 if 'class' in str(url):
                     continue
-                # <a href="http://college.gaokao.com/schlist/c1/">综合</a>
                 code = str(url).rsplit('schlist/')[1].split('/')[0]
                 educationNameAndCodeArr.append(NameAndCode(name=name, code=code))
 
@@ -126,7 +128,11 @@ class SchoolsSpider(CrawlSpider):
         logger.info(total_pages)
         current_base_url = str(response.url).rsplit('/', 1)[0]
         logger.info(current_base_url)
-        for page in range(1, int(total_pages) + 1):
+        # for page in range(1, int(total_pages) + 1):
+        #     yield Request('{}/{}'.format(current_base_url, 'p' + str(page)), self.get_school_info,
+        #                   errback=parse_error)
+        # FIXME 只分析一个
+        for page in range(1, 2):
             yield Request('{}/{}'.format(current_base_url, 'p' + str(page)), self.get_school_info,
                           errback=parse_error)
 
@@ -176,18 +182,15 @@ class SchoolsSpider(CrawlSpider):
                         school_url = '——'
 
                     if school_url != '——':
-                        logger.info('https://google.com/search?q=site:{} {}'.format(school_url, '党'))
-                        # FIXME scrapy只能获取静态网页中的标签，google的网页是动态的，需修改
-                        yield Request('https://google.com/search?q=site:{} {}'.format(school_url, '党'),
-                                      meta={'school_url': school_url, 'proxy': 'http://127.0.0.1:8181'},
-                                      callback=self.parse_google_page_nums,
-                                      errback=parse_error)
-                        # 传递入数据库，保存起来
-
-
+                        google_url = 'https://google.com/search?q=site:{} {}'.format(school_url, '党史')
+                        logger.info(google_url)
+                        splash_args = {'wait': '0.5', 'proxy': 'http://192.168.219.1:8181', 'school_url': school_url, }
+                        yield SplashRequest(google_url, self.parse_google_page_nums, endpoint='render.html',
+                                            args=splash_args)
             except Exception:
                 logger.error('error')
                 exit(-1)
+            break
 
     # 从谷歌中查询并分析
     def parse_google_page_nums(self, response):
@@ -195,31 +198,30 @@ class SchoolsSpider(CrawlSpider):
         logger.info('google page num url={}'.format(response.url))
         selector = Selector(response)
         next_page_url = selector.xpath('//a[@id="pnnext"]/@href').extract_first()
-        # 迭代翻页
-        if next_page_url is not None:
-            Request('https://google.com{}'.format(next_page_url),
-                    meta=response.meta['school_url'],
-                    callback=self.get_google_page_infos,
-                    errback=parse_error)
 
-    def get_google_page_infos(self, response):
-        # 当前页搜寻
-        selector = Selector(response)
-        query_results_entities = selector.xpath('//div[@class="tF2Cxc"]')
-        school_url = response.meta['school_url']
+        query_results_entities = selector.xpath('//div[@class="g tF2Cxc"]')
+        if len(query_results_entities) == 0:
+            query_results_entities = selector.xpath('//div[@class="tF2Cxc"]')
+        logger.info('query_results_entities size:{}', len(query_results_entities))
+        school_url = response.meta['splash']['args']['school_url']
+
+        # 解析当前页上的条目
         for entity in query_results_entities:
-            related_url = entity.xpath('./div[@class="yuRUbf"]/a/@href').extract_first()
-            related_title = selector.xpath('./div[@class="yuRUbf"]/a/h3/text()').extract_first()
-            content = selector.xpath(
-                './div[@class="VwiC3b yXK7lf MUxGbd yDYNvb lyLwlc lEBKkf"]')
+            related_url = entity.xpath('.//div[@class="yuRUbf"]/a/@href').extract_first()
+            related_title = entity.xpath('.//div[@class="yuRUbf"]/a/h3/text()').extract_first()
+            content = entity.xpath(
+                './/div[@class="VwiC3b yXK7lf MUxGbd yDYNvb lyLwlc lEBKkf"]')
             # TODO 发布时间(release time)提取
             brief_introduction = None
-            release_time = None
+            release_time = 'None'
             if len(content) == 1:
-                brief_introduction = content.xpath('./span/text()').extract_first()
+                if not content.xpath('.//span//text()').extract():
+                    brief_introduction = content.xpath('.//text()').extract_first()
+                else:
+                    brief_introduction = ''.join(content.xpath('.//span//text()').extract())
             elif len(content) == 2:
-                brief_introduction = content[0].xpath('./span/text()').extract_first()
-                release_time = content[1].xpath('./span/text()').extract_first()
+                brief_introduction = ''.join(content[0].xpath('.//span//text()').extract())
+                release_time = content.xpath('.//span[@class="MUxGbd wuQ4Ob WZ8Tjf"]').extract_first()
 
             # party的相关信息
             party_info_entity = PartyInfoItem(
@@ -229,4 +231,14 @@ class SchoolsSpider(CrawlSpider):
                 brief_introduction=brief_introduction,
                 release_time=release_time,
             )
+            logger.info(party_info_entity)
             yield party_info_entity
+
+        # 迭代翻页
+        if next_page_url is not None:
+            # 迭代页面
+            google_url = 'https://google.com{}'.format(next_page_url)
+            splash_args = {'wait': '0.5', 'proxy': 'http://192.168.219.1:8181',
+                           'school_url': response.meta['splash']['args']['school_url'], }
+            yield SplashRequest(google_url, self.parse_google_page_nums, endpoint='render.html',
+                                args=splash_args)

@@ -7,7 +7,7 @@
 # useful for handling different item types with a single interface
 from settings import MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
 import pymysql.cursors
-from items import SchoolsItem, PartyInfoItem
+import tutorial
 from loguru import logger
 
 
@@ -96,13 +96,14 @@ class SchoolsPipeline:
         self._is_connected()
         with self.connection:
             with self.connection.cursor() as cursor:
-                if query_item(item['school_url'], cursor):
-                    return
-                sql = "INSERT INTO `party_info_entities`(`school_url`," \
+                # if query_item(item['school_url'], cursor):
+                #     return
+                sql = "INSERT INTO `party_info_entities`(" \
+                      "`school_url`," \
                       "`related_url`," \
                       "`related_title`," \
                       "`brief_introduction`," \
-                      "`release_time`) VALUES (%s,%s,%s,%s,%s,%s)"
+                      "`release_time`) VALUES (%s,%s,%s,%s,%s)"
                 cursor.execute(sql, (
                     item['school_url'],
                     item['related_url'],
@@ -126,9 +127,9 @@ class SchoolsPipeline:
 
     def process_item(self, item, spider):
         logger.info("process item")
-        if type(item) == SchoolsItem:
+        if type(item) == tutorial.items.SchoolsItem:
             self._process_schools(item)
-        if type(item) == PartyInfoItem:
-            self._process_schools(item)
+        if type(item) == tutorial.items.PartyInfoItem:
+            self._process_party_infos(item)
 
         return item

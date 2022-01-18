@@ -111,16 +111,5 @@ class ProxyMiddleware:
         proxy = random.choice(PROXIES)
         if 'college.gaokao.com' in request.url:
             return
-
-        if proxy['user_pass'] is not None:
-            request.meta['proxy'] = "http://{}".format(proxy['ip_port'])
-            request.meta['proxy'] = "https://{}".format(proxy['ip_port'])
-            encoded_user_pass = base64.encodestring(proxy['user_pass'])
-            request.headers['Proxy-Authorization'] = 'Basic ' + encoded_user_pass
-            logger.info('request.meta={}'.format(request.meta))
-        else:
-            request.meta['proxy'] = "http://%s" % proxy['ip_port']
-
-        logger.info('ProxyMiddleware process_request: request={}, spider={},request.meta={}'.format(request, spider,
-                                                                                                    request.meta[
-                                                                                                        'proxy']))
+        logger.info('using proxy %s for request %s' % (proxy['ip_port'], request.meta['splash']['args']['url']))
+        request.meta['splash']['args']['proxy'] = 'http://{}'.format(proxy['ip_port'])
