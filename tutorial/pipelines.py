@@ -11,8 +11,8 @@ import tutorial
 from loguru import logger
 
 
-def query_item(school_name, cursor):
-    sql = "SELECT FROM `school_entities` where `school_name=%s`"
+def query_item(table_name, item_name, item_value, cursor):
+    sql = "SELECT FROM `%s` where `%s=%s`" % (table_name, item_name, item_value)
     try:
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -21,7 +21,7 @@ def query_item(school_name, cursor):
         else:
             return False
     except:
-        logger.error('cannot select {}', school_name)
+        logger.error('cannot select {} from {}', item_name, table_name)
         return False
 
 
@@ -72,6 +72,7 @@ class SchoolsPipeline:
         self._is_connected()
         with self.connection:
             with self.connection.cursor() as cursor:
+                # 如果数据库中已存在，那么就跳过
                 if query_item(item['name'], cursor):
                     return
                 sql = "INSERT INTO `school_entities`(`school_name`," \
@@ -96,8 +97,8 @@ class SchoolsPipeline:
         self._is_connected()
         with self.connection:
             with self.connection.cursor() as cursor:
-                # if query_item(item['school_url'], cursor):
-                #     return
+                if query_item(item['related_title'], cursor):
+                    return
                 sql = "INSERT INTO `party_info_entities`(" \
                       "`school_url`," \
                       "`related_url`," \
